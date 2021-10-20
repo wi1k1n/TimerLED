@@ -1,11 +1,13 @@
 #include "TimerLED.h"
 
-TimerLED::TimerLED(const uint8_t& pin) {
+TimerLED::TimerLED(const uint8_t& pin, const boolean inverted) {
   pinMode(this->pin, OUTPUT);
   this->timer.setTimerMode();
+  this->setInverted(inverted);
 }
 
-TimerLED::TimerLED(const uint8_t& pin, const uint8_t& len, const uint16_t* _intervals) : TimerLED(pin) {
+TimerLED::TimerLED(const uint8_t& pin, const uint8_t& len, const uint16_t* _intervals, const boolean inverted)
+: TimerLED(pin, inverted) {
   setIntervals(len, _intervals);
 }
 
@@ -28,6 +30,14 @@ void TimerLED::setIntervals(const uint8_t& len, const uint16_t* _intervals) {
     this->intervals[i] = _intervals[i];
   }
 }
+void TimerLED::setIntervals(const uint16_t& int1, const uint16_t& int2) {
+  const uint16_t ints[] = {int1, int2};
+  this->setIntervals(2, ints);
+}
+void TimerLED::setIntervals(const uint16_t& int1, const uint16_t& int2, const uint16_t& int3, const uint16_t& int4) {
+  const uint16_t ints[] = {int1, int2, int3, int4};
+  this->setIntervals(4, ints);
+}
 
 void TimerLED::tick() {
   this->timer.tick();
@@ -37,7 +47,7 @@ void TimerLED::tick() {
       this->ind = 0;
     this->timer.setTime(this->intervals[this->ind]);
     this->timer.restart();
-    digitalWrite(this->pin, (this->ind + 1) % 2);
+    digitalWrite(this->pin, this->ind % 2 ? !this->lowLevel : this->lowLevel);
   }
 }
 
@@ -45,9 +55,13 @@ void TimerLED::restart() {
   this->ind = 0;
   this->timer.setTime(this->intervals[this->ind]);
   this->timer.restart();
-  digitalWrite(this->pin, 0);
+  digitalWrite(this->pin, this->lowLevel);
 }
 void TimerLED::stop() {
   this->timer.stop();
-  digitalWrite(this->pin, 1);
+  digitalWrite(this->pin, !this->lowLevel);
+}
+
+void TimerLED::setInverted(const boolean state) {
+  this->lowLevel = state;
 }
