@@ -18,7 +18,6 @@ https://www.arduino.cc/en/guide/libraries
 TimerLED timer(LED_BUILTIN);
 
 void setup() {
-  Serial.begin(9600);
   timer.setIntervals(18, (const uint16_t[]){100, 50, 100, 50, 100, 100, 500, 50, 500, 50, 500, 100, 100, 50, 100, 50, 100, 1000});
   timer.restart();
 }
