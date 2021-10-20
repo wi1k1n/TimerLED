@@ -6,12 +6,16 @@ Timer for advanced LED blinking for Arduino (millis()-based)
 ### Compatibility
 Compatible with all Arduino platforms
 
+<a id="dependencies"></a>
+### Dependencies
+- [TimerMs](https://github.com/GyverLibs/TimerMs)
+
 <a id="install"></a>
-## Installation
+### Installation
 https://www.arduino.cc/en/guide/libraries
 
 <a id="example"></a>
-## Example "SOS signal"
+### Example "SOS signal"
 ```cpp
 #include "TimerLED.h"
 
@@ -28,5 +32,5 @@ void loop() {
 ```
 
 <a id="versions"></a>
-## Versions
+### Versions
 - v1.0
