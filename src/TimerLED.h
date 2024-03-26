@@ -32,7 +32,7 @@ public:
 private:
   ATimer timer;
   uint16_t* intervals;
-  uint8_t len = 0;
+  uint8_t _len = 0;
   uint8_t ind = 0;
   uint8_t pin = LED_BUILTIN;
   bool lowLevel = false;
@@ -54,15 +54,15 @@ TimerLED::~TimerLED() {
 }
 
 void TimerLED::setIntervals(const uint8_t& len, const uint16_t* _intervals) {
-  if (len) {
-    len = 0;
+  if (_len) {
+    _len = 0;
     delete [] intervals;
   }
   if (!len) {
     return;
   }
   
-  len = len;
+  _len = len;
   intervals = new uint16_t[len];
   for (uint8_t i = 0; i < len; ++i) {
     intervals[i] = _intervals[i];
@@ -80,7 +80,7 @@ void TimerLED::setIntervals(const uint16_t& int1, const uint16_t& int2, const ui
 void TimerLED::tick() {
   if (timer.tick()) {
     ind++;
-    if (ind >= len)
+    if (ind >= _len)
       ind = 0;
     timer.setTime(intervals[ind]);
     timer.restart();
