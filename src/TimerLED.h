@@ -14,108 +14,25 @@
 
 #include <atimer.h>
 
-class TimerLED {
-public:
-	TimerLED(const uint8_t& pin, const boolean inverted = false);
-	TimerLED(const uint8_t& pin, const uint8_t& len, const uint16_t* intervals, const boolean inverted = false);
-	~TimerLED();
+// ==================================================================================================================
+// ==================================================================================================================
+// ==================================================================================================================
 
-	void setIntervals(const uint8_t& len, const uint16_t* intervals); // number of intervals and array of intervals
-	void setIntervals(const uint16_t& int1, const uint16_t& int2); // shorter form of temporary array in main function
-	void setIntervals(const uint16_t& int1, const uint16_t& int2, const uint16_t& int3, const uint16_t& int4); // same for 4 args
-
-	void tick();
-	void restart();
-	void stop();
-
-	void setInverted(const boolean state); // for inverted HIGH/LOW consts (like in ESP)
-private:
-	ATimer timer;
-	uint16_t* intervals;
-	uint8_t _len = 0;
-	uint8_t ind = 0;
-	uint8_t pin = LED_BUILTIN;
-	bool lowLevel = false;
+enum class TimerLEDMode {
+	ONCE,
+	REPEAT
 };
 
-TimerLED::TimerLED(const uint8_t& pin, const boolean inverted) {
-	pinMode(pin, OUTPUT);
-	timer.setMode(ATimerMode::ONCE);
-	setInverted(inverted);
-}
-
-TimerLED::TimerLED(const uint8_t& pin, const uint8_t& len, const uint16_t* _intervals, const boolean inverted)
-: TimerLED(pin, inverted) {
-	setIntervals(len, _intervals);
-}
-
-TimerLED::~TimerLED() {
-	delete [] intervals;
-}
-
-void TimerLED::setIntervals(const uint8_t& len, const uint16_t* _intervals) {
-	if (_len) {
-		_len = 0;
-		delete [] intervals;
-	}
-	if (!len) {
-		return;
-	}
-	
-	_len = len;
-	intervals = new uint16_t[len];
-	for (uint8_t i = 0; i < len; ++i) {
-		intervals[i] = _intervals[i];
-	}
-}
-void TimerLED::setIntervals(const uint16_t& int1, const uint16_t& int2) {
-	const uint16_t ints[] = {int1, int2};
-	setIntervals(2, ints);
-}
-void TimerLED::setIntervals(const uint16_t& int1, const uint16_t& int2, const uint16_t& int3, const uint16_t& int4) {
-	const uint16_t ints[] = {int1, int2, int3, int4};
-	setIntervals(4, ints);
-}
-
-void TimerLED::tick() {
-	if (timer.tick()) {
-		ind++;
-		if (ind >= _len)
-			ind = 0;
-		timer.setTime(intervals[ind]);
-		timer.restart();
-		digitalWrite(pin, ind % 2 ? !lowLevel : lowLevel);
-	}
-}
-
-void TimerLED::restart() {
-	ind = 0;
-	timer.setTime(intervals[ind]);
-	timer.restart();
-	digitalWrite(pin, lowLevel);
-}
-void TimerLED::stop() {
-	timer.stop();
-	digitalWrite(pin, !lowLevel);
-}
-
-void TimerLED::setInverted(const boolean state) {
-	lowLevel = state;
-}
-
-
-// ==================================================================================================================
-// ==================================================================================================================
-// ==================================================================================================================
-
-template<int PIN>
-class TimerLED_CPIN_DINT { // constant pin, dynamic intervals
+// TODO: make variation with uint8_t intervals and multiplier (e.g. {1000, 300, 1000, 300, 1000, 1000} can be (100, {10, 3, 10, 3, 10, 10}))
+// TODO: make variation with constexpr intervals (check code snippet #1 from chatgpt below)
+template<uint8_t PIN, TimerLEDMode MODE = TimerLEDMode::ONCE>
+class TimerLED_CPIN_DINT { // Constant Pin, Dynamic Intervals
 public:
+	// TODO: make constructor variation with variadic arguments (check code snippet #2 from chatgpt below)
 	TimerLED_CPIN_DINT() {
 		pinMode(PIN, OUTPUT);
-		_timer.setMode(ATimerMode::ONCE);
+		_timer.setMode(MODE == TimerLEDMode::ONCE ? ATimerMode::ONCE : ATimerMode::REPEAT); // TODO: this can be constexpr if ATimer has variation with constexpr mode
 	}
-
 	~TimerLED_CPIN_DINT() {
 		if (_intervals)
 			delete[] _intervals;
@@ -139,10 +56,7 @@ public:
 		digitalWrite(PIN, _idx % 2 ? HIGH : LOW);
 	}
 
-	void start() {
-		restart();
-	}
-	void startBlocking() {
+	void restartBlocking() {
 		restart();
 		while (_idx < _len) {
 			const uint8_t curIdx = _idx;
@@ -162,6 +76,8 @@ public:
 		_timer.stop();
 		digitalWrite(PIN, HIGH);
 	}
+
+	bool isRunning() const { return _timer.isRunning(); }
 private:
 	template<typename... Intervals>
 	void setIntervalsHelper(int idx, uint16_t first, Intervals... rest) {
@@ -183,5 +99,116 @@ private:
 	uint8_t _idx = 0;
 };
 
+template<uint8_t PIN, TimerLEDMode MODE = TimerLEDMode::ONCE>
+using TimerLED = TimerLED_CPIN_DINT<PIN, MODE>;
 
+// Code snippet #1 from ChatGPT:
+/*
+Query:
+====================
+I need a templated class Sequencer that has a single function "display()". Sequencer uses parameter pack for storing variable amount of int values. Each value represents the number of characters that needs to be displayed. When "display()" is executed, there's should be an output which alternates the case of the symbols. It's easier to show the usage of this class on example:
+
+The following code:
+Sequencer<3, 4, 2, 5, 1> seq;
+seq.display();
+
+should produce the following output:
+'''
+ooo OOOO oo OOOOO o
+'''
+====================
+
+Response:
+====================
+#include <iostream>
+#include <cctype>
+
+template<int... N>
+class Sequencer {
+public:
+    void display() const {
+        displayImpl<0, N...>(false);
+    }
+
+private:
+    // Helper function to alternate the case of characters
+    void printAlternating(int count, char startChar) const {
+        for (int i = 0; i < count; ++i) {
+            std::cout << startChar;
+        }
+    }
+
+    // Base case for the recursive display implementation
+    template<int Index>
+    void displayImpl(bool toggle) const {
+        std::cout << std::endl;
+    }
+
+    // Recursive case for the display implementation
+    template<int Index, int First, int... Rest>
+    void displayImpl(bool toggle) const {
+        char ch = toggle ? 'O' : 'o';
+        printAlternating(First, ch);
+        
+        if constexpr (sizeof...(Rest) > 0) {
+            std::cout << " ";
+            displayImpl<Index + 1, Rest...>(!toggle);
+        } else {
+            std::cout << std::endl;
+        }
+    }
+};
+
+int main() {
+    Sequencer<5, 10, 1, 1, 1, 2, 3, 5> seq;
+    seq.display();
+    return 0;
+}
+====================
+*/
+
+
+// Code snippet #2 from ChatGPT:
+/*
+Query:
+====================
+I need a class MyClass which takes variadic arguments of type int in the constructor and fills them in the private std::vector field.
+====================
+
+Response:
+====================
+#include <iostream>
+#include <vector>
+#include <initializer_list>
+
+class MyClass {
+private:
+    std::vector<int> values;
+
+public:
+    // Variadic template constructor
+    template<typename... Args>
+    MyClass(Args... args) : values{args...} {
+        // The constructor body is empty as the initialization list already does the work
+    }
+
+    // Function to print the contents of the vector for demonstration purposes
+    void printValues() const {
+        for (int value : values) {
+            std::cout << value << " ";
+        }
+        std::cout << std::endl;
+    }
+};
+
+int main() {
+    MyClass(1, 2, 3, 4, 5).printValues();
+    MyClass(3, 2, 1).printValues();
+    MyClass().printValues();
+    MyClass(5).printValues();
+
+    return 0;
+}
+====================
+*/
 #endif // TIMERLED_H__
