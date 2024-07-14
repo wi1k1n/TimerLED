@@ -6,17 +6,71 @@
 	MIT License
 
 	Versions:
-	v1.0 - release
+	v2.0 - refactored + using ATimer
 */
 
 #ifndef TIMERLED_H__
-#define TIMERLED_H__
+#define TIMERLED_H__ 20240714
+
+#include <Arduino.h>
 
 #include <atimer.h>
 
-// ==================================================================================================================
-// ==================================================================================================================
-// ==================================================================================================================
+#ifdef TIMERLED_DEBUG
+// #include <debug.h>
+void printMillisAsTime(const unsigned long time) {
+  const unsigned long currentMillis = time;
+  const unsigned long hours = currentMillis / 3600000;
+  unsigned long remainingMillis = currentMillis % 3600000;
+  const unsigned long minutes = remainingMillis / 60000;
+  remainingMillis %= 60000;
+  const unsigned long seconds = remainingMillis / 1000;
+  const unsigned long milliseconds = remainingMillis % 1000;
+
+  // Print the time in HH:mm:ss.ms format
+  Serial.print(hours);
+  Serial.print(":");
+  if (minutes < 10) Serial.print("0");
+  Serial.print(minutes);
+  Serial.print(":");
+  if (seconds < 10) Serial.print("0");
+  Serial.print(seconds);
+  Serial.print(".");
+  if (milliseconds < 100) Serial.print("0");
+  if (milliseconds < 10) Serial.print("0");
+  Serial.print(milliseconds);
+}
+template<typename T>
+void DLOGLN_helper(T v) {
+	Serial.print(v);
+}
+template <typename T, typename... Ts>
+void DLOGLN_helper(T v, Ts... ts) {
+	Serial.print(v);
+	DLOGLN_helper(ts...);
+	Serial.println();
+}
+void DLOGLN_helper() {
+	Serial.println();
+}
+template <typename... Ts>
+void DLOGLN(Ts... ts) {
+	Serial.print("[");
+	printMillisAsTime(millis());
+	Serial.print("]> ");
+	DLOGLN_helper(ts...);
+}
+void DLOGLN() {
+	Serial.print("[");
+	printMillisAsTime(millis());
+	Serial.println("]");
+}
+#else
+#define DLOGLN(...)
+#endif
+
+#define LEDON LOW
+#define LEDOFF HIGH
 
 enum class TimerLEDMode {
 	ONCE,
@@ -25,21 +79,24 @@ enum class TimerLEDMode {
 
 // TODO: make variation with uint8_t intervals and multiplier (e.g. {1000, 300, 1000, 300, 1000, 1000} can be (100, {10, 3, 10, 3, 10, 10}))
 // TODO: make variation with constexpr intervals (check code snippet #1 from chatgpt below)
-template<uint8_t PIN, TimerLEDMode MODE = TimerLEDMode::ONCE>
+template<uint8_t PIN, TimerLEDMode MODE = TimerLEDMode::ONCE, bool FINISH_STATE = LEDOFF>
 class TimerLED_CPIN_DINT { // Constant Pin, Dynamic Intervals
 public:
 	// TODO: make constructor variation with variadic arguments (check code snippet #2 from chatgpt below)
 	TimerLED_CPIN_DINT() {
+		DLOGLN("TimerLED_CPIN_DINT<", PIN, ">::TimerLED_CPIN_DINT()");
 		pinMode(PIN, OUTPUT);
 		_timer.setMode(MODE == TimerLEDMode::ONCE ? ATimerMode::ONCE : ATimerMode::REPEAT); // TODO: this can be constexpr if ATimer has variation with constexpr mode
 	}
 	~TimerLED_CPIN_DINT() {
+		DLOGLN("TimerLED_CPIN_DINT<", PIN, ">::~TimerLED_CPIN_DINT()");
 		if (_intervals)
 			delete[] _intervals;
 	}
 	
 	template<typename... Intervals>
 	void setIntervals(Intervals... intervals) {
+		DLOGLN("TimerLED_CPIN_DINT<", PIN, ">::setIntervals(", sizeof...(intervals), "...)");
 		reallocate(sizeof...(intervals));
 		setIntervalsHelper(0, intervals...);
 	}
@@ -47,34 +104,46 @@ public:
 	void tick() {
 		if (!_timer.tick())
 			return;
-			
-		_idx++;
-		if (_idx >= _len)
+		
+		++_idx;
+		DLOGLN("TimerLED_CPIN_DINT<", PIN, ">::tick() _idx=", _idx, " _intervals[_idx]=", _intervals[_idx]);
+		_idx = getNextNonEmptyIntervalIdx(_idx);
+		DLOGLN("\tgetNextNonEmptyIntervalIdx() -> ", _idx);
+		if (_idx >= _len) {
 			_idx = 0;
+			if (MODE == TimerLEDMode::ONCE)
+				return stop();
+		}
 		_timer.setTime(_intervals[_idx]);
 		_timer.restart();
-		digitalWrite(PIN, _idx % 2 ? HIGH : LOW);
+		digitalWrite(PIN, _idx % 2 ? LEDOFF : LEDON);
 	}
 
 	void restartBlocking() {
+		DLOGLN("TimerLED_CPIN_DINT<", PIN, ">::restartBlocking()");
 		restart();
 		while (_idx < _len) {
 			const uint8_t curIdx = _idx;
 			tick();
 			yield();
 			if (curIdx != _idx && _idx == 0)
-				return;
+				return stop();
 		}
 	}
 	void restart() {
-		_idx = 0;
+		DLOGLN("TimerLED_CPIN_DINT<", PIN, ">::restart()");
+		_idx = getNextNonEmptyIntervalIdx(0);
+		DLOGLN("\tgetNextNonEmptyIntervalIdx() -> ", _idx);
+		if (_idx >= _len)
+			return stop(); // this means all intervals are empty
 		_timer.setTime(_intervals[_idx]);
 		_timer.restart();
-		digitalWrite(PIN, LOW);
+		digitalWrite(PIN, LEDON);
 	}
 	void stop() {
+		DLOGLN("TimerLED_CPIN_DINT<", PIN, ">::stop()");
 		_timer.stop();
-		digitalWrite(PIN, HIGH);
+		digitalWrite(PIN, FINISH_STATE);
 	}
 
 	bool isRunning() const { return _timer.isRunning(); }
@@ -91,6 +160,12 @@ private:
 			delete[] _intervals;
 		_intervals = new uint16_t[size];
 		_len = size;
+	}
+
+	uint8_t getNextNonEmptyIntervalIdx(uint8_t idx) {
+		while (idx < _len && _intervals[idx] == 0)
+			idx++;
+		return idx;
 	}
 private:
 	uint16_t* _intervals = nullptr;
